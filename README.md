@@ -4,14 +4,14 @@ This folder contains the scripts used to collect Navis flow-through data, inspec
 
 ## Workflow
 
-The normal workflow is:
+Run the processing steps in this order:
 
-1. Connect the float and collect samples with `flow_through.py`.
-2. Use the saved data to create or update processed Excel files named `<serial>_calcs_.xlsx`.
-3. Analyze an individual sensor with `flowthrough_analysis.py` or a notebook.
-4. Generate comparison plots with `flowthrough_visualization_standalone.py`.
+1. Connect the float and collect samples with the appropriate collector.
+2. Run the `split_results` notebook after data collection is complete to split and organize the collected data by float or test.
+3. Run `flowthrough_analysis.py` to analyze the split data and create the processed results used by the visualization step.
+4. Run `flowthrough_visualization_standalone.py` to generate comparison plots from those processed results.
 
-The collector saves raw data as pickle files. The analysis and visualization scripts expect processed Excel workbooks in the shared `flow_through_results` directory.
+The collector saves raw data as pickle files. The analysis step creates processed Excel workbooks named `<serial>_calcs_.xlsx` in the shared `flow_through_results` directory. These workbooks are the inputs to the visualization script.
 
 ## Install Python packages
 
@@ -37,7 +37,12 @@ cd "C:\Users\athay\Documents\navis_flow_through\flowthrough_testing"
 
 ### Configure the collector
 
-Open `flow_through.py` and check these settings near the top:
+Choose the collector that matches the float:
+
+- `flow_through.py` is for NavisV1 floats.
+- `flow_through2.py` is for NavisV2 floats and includes the additional NavisV2 sensor columns.
+
+Open the selected script and check these settings near the top:
 
 ```python
 run_until = "2027-01-01 00:00"  # YYYY-MM-DD HH:MM
@@ -70,11 +75,27 @@ The script wakes the float, requests the sensor and pH samples, appends each sam
 
 ### Other collectors
 
-- `flow_through2.py` is a variant with additional sensor columns.
 - `SBE83test.py` and `SBE83testV1.py` collect SBE83 test data and save Excel files.
 - The files with `(1)` or `copy` in their names are older variants; use them only when reproducing an earlier test.
 
-## Prepare data for analysis
+## Split and analyze collected data
+
+After the flow-through collection has finished, open and run the appropriate `split_results` notebook:
+
+- `split_results.ipynb`
+- `split_results (1).ipynb` if reproducing the alternate version of that workflow
+
+The split-results step organizes the collected data so that each float or test can be processed separately. Run this step before running the analysis code.
+
+Next, run `flowthrough_analysis.py` or the related analysis notebook. The analysis step calculates the sensor results, including median-corrected values and elapsed time, and writes or updates the processed `<serial>_calcs_.xlsx` workbooks in:
+
+```text
+G:\Shared drives\WHOI Argo\BGC\Float Tracking\flow_through_results
+```
+
+Only after these workbooks have been created should you run `flowthrough_visualization_standalone.py`.
+
+## Processed data format
 
 The plotting scripts read one processed workbook per sensor from:
 
@@ -104,7 +125,7 @@ DATE, PRES, PSAL, PH_TOTAL, TEMP, DOXY, MCOMS1, MCOMS2, MCOMS3
 
 ## Analyze one sensor
 
-`flowthrough_analysis.py` provides two functions:
+`flowthrough_analysis.py` provides two functions for inspecting the processed results:
 
 - `diff_analysis(SN, param)` reads `<SN>_calcs_.xlsx`, calculates the parameter's offset from its median, and adds elapsed time since the test started.
 - `split_ftest(lastdate, SNs)` reads a workbook and returns one DataFrame per requested serial number.
