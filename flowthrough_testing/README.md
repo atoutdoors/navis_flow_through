@@ -1,144 +1,163 @@
-# Flow-Through Visualization
+# Flow-through testing
 
-This program reads flow-through Excel files and creates interactive plots for the sensor data.
+This folder contains the scripts used to collect Navis flow-through data, inspect the resulting files, and generate interactive sensor plots.
 
-The main file is:
+## Workflow
+
+The normal workflow is:
+
+1. Connect the float and collect samples with `flow_through.py`.
+2. Use the saved data to create or update processed Excel files named `<serial>_calcs_.xlsx`.
+3. Analyze an individual sensor with `flowthrough_analysis.py` or a notebook.
+4. Generate comparison plots with `flowthrough_visualization_standalone.py`.
+
+The collector saves raw data as pickle files. The analysis and visualization scripts expect processed Excel workbooks in the shared `flow_through_results` directory.
+
+## Install Python packages
+
+Use Python 3.10 or newer. From PowerShell, install the packages used by the scripts:
+
+```powershell
+python -m pip install pandas numpy openpyxl plotly pyserial regex
+```
+
+Run all commands from this folder:
+
+```powershell
+cd "C:\Users\athay\Documents\navis_flow_through\flowthrough_testing"
+```
+
+## Collect flow-through data
+
+### Hardware setup
+
+- Connect the float to the computer over its serial interface.
+- Confirm the COM-port number in Windows Device Manager.
+- Make sure the shared `G:` drive is connected, or change `save_directory` in the script to a local folder that already exists.
+
+### Configure the collector
+
+Open `flow_through.py` and check these settings near the top:
+
+```python
+run_until = "2027-01-01 00:00"  # YYYY-MM-DD HH:MM
+save_directory = "G://Shared drives//WHOI Argo//BGC//Float Tracking//flow_through_data"
+```
+
+Set `run_until` to the date and time when sampling should stop. The collector writes files such as:
 
 ```text
-flowthrough_visualization_standalone.py
+F1558_20261117.pkl
 ```
 
-## 1. Check that Python is installed
+The serial number is obtained from the float, so the filename is generated automatically.
 
-Open **PowerShell** and type:
+### Start a run
+
+From PowerShell:
 
 ```powershell
-python --version
+python flow_through.py
 ```
 
-Python 3.10 or newer is recommended. If PowerShell cannot find Python, install Python from [python.org](https://www.python.org/downloads/).
+When prompted, enter the numeric COM-port suffix. For example, for `COM7`, enter:
 
-## 2. Install the required packages
-
-In PowerShell, run:
-
-```powershell
-pip install pandas plotly openpyxl
+```text
+7
 ```
 
-These packages allow the program to read Excel files and create plots.
+The script wakes the float, requests the sensor and pH samples, appends each sample to a DataFrame, and periodically saves the DataFrame as a pickle file. Leave the PowerShell window open while the test is running. Stop safely with `Ctrl+C` only when the collector is not in the middle of a serial transaction.
 
-## 3. Check the input files
+### Other collectors
 
-By default, the program looks for Excel files in:
+- `flow_through2.py` is a variant with additional sensor columns.
+- `SBE83test.py` and `SBE83testV1.py` collect SBE83 test data and save Excel files.
+- The files with `(1)` or `copy` in their names are older variants; use them only when reproducing an earlier test.
+
+## Prepare data for analysis
+
+The plotting scripts read one processed workbook per sensor from:
 
 ```text
 G:\Shared drives\WHOI Argo\BGC\Float Tracking\flow_through_results
 ```
 
-The folder must be available on your computer, and the files must be named like this:
+Each workbook must be named:
+
+```text
+<serial>_calcs_.xlsx
+```
+
+For example:
 
 ```text
 1558_calcs_.xlsx
-1557_calcs_.xlsx
-1559_calcs_.xlsx
 ```
 
-The sensor number in the filename must match one of the sensor numbers listed in the Python script.
-
-Each Excel file should contain a `DATE` column, a `PRES` column, and the sensor-data columns being plotted, such as:
+The workbook should contain at least:
 
 ```text
-PSAL, PH_TOTAL, TEMP, PRES, DOXY, MCOMS1, MCOMS2, MCOMS3, NITRATE
+DATE, PRES, PSAL, PH_TOTAL, TEMP, DOXY, MCOMS1, MCOMS2, MCOMS3
 ```
 
-Nitrate is optional. Files without usable nitrate data are skipped only for nitrate plots.
+`NITRATE` is optional. `DATE` must contain timestamps, and the plotted sensor columns must contain numeric values. The visualization script skips nitrate plots when nitrate is not present, but it reports missing required columns for the other parameters.
 
-## 4. Choose whether to save plots
+## Analyze one sensor
 
-Open `flowthrough_visualization_standalone.py` in a text editor such as VS Code or Notepad++.
+`flowthrough_analysis.py` provides two functions:
 
-Near the beginning of the file, find:
+- `diff_analysis(SN, param)` reads `<SN>_calcs_.xlsx`, calculates the parameter's offset from its median, and adds elapsed time since the test started.
+- `split_ftest(lastdate, SNs)` reads a workbook and returns one DataFrame per requested serial number.
+
+For example, from Python or a notebook:
 
 ```python
-SAVE_HTML = False
+from flowthrough_analysis import diff_analysis
+
+temperature = diff_analysis("1558", "TEMP")
+print(temperature.head())
+temperature.to_csv("1558_TEMP_analysis.csv", index=False)
 ```
 
-Choose one setting:
+The returned table includes the raw parameter, `<parameter>-Median`, pressure, date, serial number, and elapsed time in hours and seconds.
 
-```python
-SAVE_HTML = False
-```
+## Generate interactive plots
 
-This opens the plots in your web browser using temporary files. It does not save the plots in the output folder.
+The recommended entry point is `flowthrough_visualization_standalone.py`.
 
-Or:
-
-```python
-SAVE_HTML = True
-```
-
-This saves the plots as interactive HTML files.
-
-Saved plots are placed in:
-
-```text
-Z:\www\bgc\flow_through
-```
-
-## 5. Run the program
-
-In PowerShell, move to the project folder:
-
-```powershell
-cd "C:\Users\athay\Documents\Repositories\bgc-testing\flowthrough_testing"
-```
-
-Then run:
+By default, it reads from `G:/Shared drives/WHOI Argo/BGC/Float Tracking/flow_through_results` and opens temporary HTML plots in the browser:
 
 ```powershell
 python flowthrough_visualization_standalone.py
 ```
 
-The program will print progress messages, such as:
+To use different folders, provide command-line overrides:
 
-```text
-Plot mode: DISPLAY ONLY (temporary browser files)
-[1/3] Preparing cached sensor data...
-[2/3] Creating all-float raw plots...
-[3/3] Creating date-based grouped plots...
-Finished generating original plots.
+```powershell
+python flowthrough_visualization_standalone.py `
+  --results-dir "C:\path\to\flow_through_results" `
+  --output-dir "C:\path\to\flow_through_plots"
 ```
 
-## 6. What the plots show
+To save plots instead of opening temporary browser files, edit:
 
-The program creates:
+```python
+SAVE_HTML = True
+```
 
-- Plots containing all selected sensors.
-- Raw sensor-value plots.
-- Median-corrected plots from the original workflow.
-- Grouped plots comparing related sensors.
+Saved plots go to `Z:/www/bgc/flow_through` by default, or to the folder supplied with `--output-dir`. The script creates:
 
-If `SAVE_HTML = True`, open an HTML file in a web browser to interact with the plot. You can zoom, pan, hide sensors by clicking the legend, and save an image from the plot menu.
+- raw all-sensor plots for salinity, pH, temperature, oxygen, nitrate, and pressure;
+- median-corrected plots for the configured parameters; and
+- date-based grouped plots for the sensor groups in the script.
 
-## Common problems
+In a Plotly plot, click legend entries to hide or show sensors, and use the toolbar to zoom, pan, or export an image.
 
-### No plots appear
+## Troubleshooting
 
-Confirm that:
-
-1. You set `SAVE_HTML = False`.
-2. You ran the correct script file.
-3. A web browser is installed and set as the default browser.
-
-### A file cannot be found
-
-Check that the `G:` drive is connected and that the Excel filename follows the required format.
-
-### A parameter is missing
-
-The script skips missing nitrate data. Other missing columns may require adding the column to the Excel file or removing that parameter from the parameter list in the script.
-
-### The program stops with an error
-
-Keep the PowerShell window open and copy the complete error message. It usually identifies the specific file, sensor, or column causing the problem.
+- **Cannot open the COM port:** confirm the port number, close other serial-monitor programs, and check that the float is connected.
+- **Save directory does not exist:** connect the `G:` drive or change `save_directory` to an existing directory.
+- **No input workbook found:** confirm the filename is exactly `<serial>_calcs_.xlsx` and that the `G:` drive is available.
+- **Missing parameter:** check the workbook column names against the required columns above. Nitrate is the only optional plotted parameter.
+- **No browser plot appears:** set `SAVE_HTML = True` and provide a local `--output-dir`, then open the generated `.html` files manually.
+- **Serial read errors:** keep the full traceback and terminal output; it identifies whether the problem occurred while waking the float, requesting a sample, or parsing a response.
